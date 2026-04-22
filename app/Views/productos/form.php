@@ -50,6 +50,7 @@
         .btn-verde  { background: #2e7d32; color: white; }
         .btn-gris   { background: #757575; color: white; }
         .btn:hover  { opacity: 0.85; }
+        //esto es una prueba a ver si se ve 
 
         /* Errores de validación */
         .errores {
