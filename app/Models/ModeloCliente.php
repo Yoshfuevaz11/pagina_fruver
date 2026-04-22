@@ -22,7 +22,7 @@ class ModeloCliente extends Model
     public function eliminarCliente($id_cliente){
         if ($this->delete($id_cliente)) 
             return true; 
-         else 
+        else 
             return false; 
         }
 

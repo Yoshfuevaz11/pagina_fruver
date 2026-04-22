@@ -2,103 +2,74 @@
 
 namespace App\Controllers;
 
-use App\Models\ModeloCliente;
+use App\Models\PedidoModel;
+use App\Models\ProductoModel;
+use App\Models\ClienteModel;
+use App\Models\ExistenciaModel;
+use App\Models\EntradaModel;
+use App\Models\MermaModel;
 
 class Home extends BaseController
 {
     public function index(): string
     {
-        return view('home');
-    }
+        $pedidoModel    = new PedidoModel();
+        $productoModel  = new ProductoModel();
+        $clienteModel   = new ClienteModel();
+        $existenciaModel = new ExistenciaModel();
+        $entradaModel   = new EntradaModel();
+        $mermaModel     = new MermaModel();
 
-    public function vista_cliente(): string
-    {
-        return view('alta_cliente');
-    }
+        // ── Conteos generales ──────────────────────────
+        $totalClientes   = $clienteModel->countAll();
+        $totalProductos  = $productoModel->countAll();
+        $pedidos         = $pedidoModel->getPedidosCompletos();
+        $totalPedidos    = count($pedidos);
 
-    public function guardar_cliente()
-    {
-        $mcliente = new ModeloCliente();
-
-        $datos_cliente = [ 
-            'nombre'    => $this->request->getPost('nombre'),
-            'direccion' => $this->request->getPost('direccion'),
-            'telefono'  => $this->request->getPost('telefono'),
-            'rfc'       => $this->request->getPost('rfc')
-        ];
-
-        if(empty($datos_cliente['nombre']) ||
-           empty($datos_cliente['direccion']) ||
-           empty($datos_cliente['rfc']) ||
-           empty($datos_cliente['telefono'])) 
-        {
-            return view('alta_cliente');
-        } else {
-            //evitar datos repetidos
-            $ren=$mcliente->buscRFC($datos_cliente['rfc']);
-            $total=count($ren);
-              if($total==0)
-            $mcliente->insert($datos_cliente);
-             else 
-                echo"Cliente ya registrado";
-        }
-    }
-
-    public function lista_clientes(){
-         $mcliente = new ModeloCliente();
-         $clientes = $mcliente->findAll(); //select * from cliente
-            $datos = ['datos_cliente' => $clientes];
-            return view('lista_clientes', $datos);
-    }
-    public function recuperar($id_cliente){
-    $mcliente = new ModeloCliente();
-    $cliente = $mcliente->getUser($id_cliente);
-
-    if (!$cliente) {
-        return "Cliente no encontrado";
-    }
-
-    $datos['cliente'] = $cliente;
-    return view('emergente', $datos);
-}
-
-    public function actualizar(){
-        $id = $this->request->getPost('id_cliente');
-        $mcliente = new ModeloCliente();
-        $datos_mod = [
-            'nombre' => $this->request->getPost('nombre'),
-            'direccion' => $this->request->getPost('direccion'),
-            'rfc' => $this->request->getPost('rfc'),
-            'telefono' => $this->request->getPost('telefono')
-        ];
-
-      if ($mcliente->update($id, $datos_mod)) {
-        $datos['mensaje'] = 'Cliente actualizado correctamente';
-    } else {
-        $datos['mensaje'] = 'Error al actualizar cliente';
-    }
-
-    
-    $datos['datos_cliente'] = $mcliente->findAll(); 
-    
-    return view('lista_clientes', $datos);
-}
-
-    public function borrar($id_cliente){
-        $mcliente = new ModeloCliente();
-        if ($mcliente->eliminarCliente($id_cliente)) {
-            $c=$mcliente->findAll();
-            $datos=['datos_cliente' => $c];
-            return view ('lista_clientes', $datos);
-             $datos['mensaje'] = 'Cliente eliminado correctamente';
-        } else {
-            $datos['mensaje'] = 'Error al eliminar cliente';
+        // ── Pedidos por estado ─────────────────────────
+        $porEstado = array_fill_keys(array_keys(PedidoModel::ESTADOS), 0);
+        foreach ($pedidos as $p) {
+            $st = $p['status_actual'] ?? 'pedido';
+            if (isset($porEstado[$st])) $porEstado[$st]++;
         }
 
-        
-        $datos['datos_cliente'] = $mcliente->findAll(); 
-        
-        return view('lista_clientes', $datos);
+        // ── Pedidos recientes (últimos 5) ──────────────
+        $pedidosRecientes = array_slice($pedidos, 0, 5);
+
+        // ── Existencias bajas (menos de 20 unidades) ───
+        $existencias    = $existenciaModel->getExistenciasConProducto();
+        $stockBajo      = array_filter($existencias, fn($e) =>
+            ($e['exis_total_general'] - $e['exis_bloqueo']) < 20
+        );
+
+        // ── Entradas próximas a vencer (≤ 3 días) ──────
+        $entradas      = $entradaModel->getEntradasConProducto();
+        $porVencer     = array_filter($entradas, function($e) {
+            $hoy  = new \DateTime();
+            $cad  = new \DateTime($e['fecha_caducidad']);
+            $diff = $hoy->diff($cad)->days;
+            return $cad >= $hoy && $diff <= 3;
+        });
+        $vencidas      = array_filter($entradas, function($e) {
+            return new \DateTime($e['fecha_caducidad']) < new \DateTime();
+        });
+
+        // ── Mermas recientes ───────────────────────────
+        $mermasRecientes = array_slice($mermaModel->getMermasCompleto(), 0, 5);
+
+        return view('home', [
+            'titulo'          => 'Panel Principal',
+            'totalClientes'   => $totalClientes,
+            'totalProductos'  => $totalProductos,
+            'totalPedidos'    => $totalPedidos,
+            'porEstado'       => $porEstado,
+            'pedidosRecientes'=> $pedidosRecientes,
+            'stockBajo'       => $stockBajo,
+            'porVencer'       => $porVencer,
+            'vencidas'        => $vencidas,
+            'mermasRecientes' => $mermasRecientes,
+            'estados'         => PedidoModel::ESTADOS,
+            'colores'         => PedidoModel::COLORES,
+        ]);
     }
-    
 }
