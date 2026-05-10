@@ -136,14 +136,13 @@
 </div>
 
 <script>
-<!-- Reemplaza el bloque de script al final del form.php de pedidos -->
-<script>
+// Variables globales
+let filaCount = 0;
 const colores = <?= json_encode(array_values(['#fff3e0','#e3f2fd','#fff8e1'])) ?>;
 
-// AJAX AUTOCOMPLETE 
-// ============================================================
-let filaCount = 0;
-
+/**
+ * Agrega una nueva fila de producto a la tabla
+ */
 function agregarFila() {
     const tbody = document.getElementById('filas-productos');
     const i = filaCount++;
@@ -152,22 +151,13 @@ function agregarFila() {
     fila.id = `fila-${i}`;
     fila.innerHTML = `
         <td style="position:relative">
-            <!-- Input de búsqueda visible -->
-            <input type="text" id="busq-${i}" placeholder="Escribe nombre o categoría..."
+            <input type="text" id="busq-${i}" placeholder="Escribe nombre..."
                 autocomplete="off"
                 oninput="buscarProducto(${i})"
                 onfocus="buscarProducto(${i})"
                 style="width:100%;padding:8px;border:1px solid #ddd;border-radius:5px;font-size:.88rem">
-
-            <!-- Campo oculto con el ID real del producto -->
             <input type="hidden" name="id_producto3[]" id="prod-id-${i}">
-
-            <!-- Dropdown de resultados -->
-            <div id="drop-${i}" style="
-                display:none; position:absolute; top:100%; left:0; right:0;
-                background:white; border:1px solid #ddd; border-radius:6px;
-                box-shadow:0 4px 12px rgba(0,0,0,.1); z-index:999;
-                max-height:220px; overflow-y:auto;">
+            <div id="drop-${i}" style="display:none; position:absolute; top:100%; left:0; right:0; background:white; border:1px solid #ddd; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,.1); z-index:999; max-height:220px; overflow-y:auto;">
             </div>
         </td>
         <td>
@@ -190,89 +180,93 @@ function agregarFila() {
                 oninput="calcularFila(${i})"
                 style="width:100%;padding:8px;border:1px solid #ddd;border-radius:5px;font-size:.88rem">
         </td>
-        <td id="total-${i}" style="font-weight:bold;color:#2e7d32;text-align:center">$0.00</td>
+        <td class="subtotal-fila" id="total-${i}" style="font-weight:bold;color:#2e7d32;text-align:center">$0.00</td>
         <td style="text-align:center">
             <button type="button"
-                style="background:#ffebee;color:#c62828;border:none;border-radius:6px;
-                        padding:6px 10px;cursor:pointer;font-size:.9rem"
-                onclick="document.getElementById('fila-${i}').remove(); calcularTotal()">
+                style="background:#ffebee;color:#c62828;border:none;border-radius:6px; padding:6px 10px;cursor:pointer;font-size:.9rem"
+                onclick="eliminarFila(${i})">
                 <i class="ri-delete-bin-line"></i>
             </button>
         </td>
     `;
     tbody.appendChild(fila);
 
-    // Cerrar dropdown al click fuera
     document.addEventListener('click', e => {
         if (!fila.contains(e.target)) {
-            document.getElementById(`drop-${i}`).style.display = 'none';
+            const d = document.getElementById(`drop-${i}`);
+            if(d) d.style.display = 'none';
         }
     });
 }
 
-// ── AJAX al endpoint que pide la maestra ─────────────────
+function eliminarFila(i) {
+    const fila = document.getElementById(`fila-${i}`);
+    if (fila) {
+        fila.remove();
+        calcularTotal();
+    }
+}
+
+// Lógica de búsqueda AJAX
 let timers = {};
 function buscarProducto(i) {
-    const q    = document.getElementById(`busq-${i}`).value;
+    const q = document.getElementById(`busq-${i}`).value;
     const drop = document.getElementById(`drop-${i}`);
 
     clearTimeout(timers[i]);
     timers[i] = setTimeout(async () => {
         const url = `<?= base_url('productos/buscar') ?>?q=${encodeURIComponent(q)}`;
-        const res  = await fetch(url);
-        const data = await res.json();
-
-        drop.innerHTML = '';
-
-        if (data.length === 0) {
-            drop.innerHTML = '<div style="padding:12px;color:#aaa;font-size:.85rem;text-align:center">Sin resultados</div>';
+        try {
+            const res = await fetch(url);
+            const data = await res.json();
+            drop.innerHTML = '';
+            if (data.length === 0) {
+                drop.innerHTML = '<div style="padding:12px;color:#aaa;font-size:.85rem;text-align:center">Sin resultados</div>';
+                drop.style.display = 'block';
+                return;
+            }
+            data.forEach(prod => {
+                const item = document.createElement('div');
+                item.style.cssText = 'padding:10px 14px;cursor:pointer;font-size:.88rem;border-bottom:1px solid #f5f5f5;display:flex;justify-content:space-between;align-items:center';
+                item.innerHTML = `<span><strong>${prod.nombre}</strong><small style="color:#aaa;margin-left:6px">${prod.categoria}</small></span>`;
+                item.onclick = () => seleccionarProducto(i, prod);
+                drop.appendChild(item);
+            });
             drop.style.display = 'block';
-            return;
-        }
-
-        data.forEach(prod => {
-            const item = document.createElement('div');
-            item.style.cssText = 'padding:10px 14px;cursor:pointer;font-size:.88rem;border-bottom:1px solid #f5f5f5;display:flex;justify-content:space-between;align-items:center';
-            item.innerHTML = `
-                <span>
-                    <strong>${prod.nombre}</strong>
-                    <small style="color:#aaa;margin-left:6px">${prod.categoria}</small>
-                </span>
-                <small style="color:#2e7d32;font-weight:600">${prod.unidad_venta}</small>
-            `;
-            item.addEventListener('mouseenter', () => item.style.background = '#f5fdf5');
-            item.addEventListener('mouseleave', () => item.style.background = '');
-            item.addEventListener('click', () => seleccionarProducto(i, prod));
-            drop.appendChild(item);
-        });
-
-        drop.style.display = 'block';
-    }, 250); // debounce 250ms
+        } catch (e) { console.error("Error en búsqueda", e); }
+    }, 250);
 }
 
 function seleccionarProducto(i, prod) {
-    document.getElementById(`busq-${i}`).value    = prod.nombre;
+    document.getElementById(`busq-${i}`).value = prod.nombre;
     document.getElementById(`prod-id-${i}`).value = prod.id_producto;
-    document.getElementById(`unidad-${i}`).value  = prod.unidad_venta;
+    document.getElementById(`unidad-${i}`).value = prod.unidad_venta;
     document.getElementById(`drop-${i}`).style.display = 'none';
 }
 
 function calcularFila(i) {
-    const cant   = parseFloat(document.getElementById(`cant-${i}`)?.value)   || 0;
-    const precio = parseFloat(document.getElementById(`precio-${i}`)?.value) || 0;
-    const total  = cant * precio;
+    const cant = parseFloat(document.getElementById(`cant-${i}`).value) || 0;
+    const precio = parseFloat(document.getElementById(`precio-${i}`).value) || 0;
+    const subtotal = cant * precio;
     const el = document.getElementById(`total-${i}`);
-    if (el) el.textContent = '$' + total.toFixed(2);
+    if (el) el.textContent = '$' + subtotal.toFixed(2);
     calcularTotal();
 }
 
+/**
+ * Calcula el gran total sumando solo los subtotales de las filas
+ */
 function calcularTotal() {
     let suma = 0;
-    document.querySelectorAll('[id^="total-"]').forEach(el => {
+    // Usamos una clase específica para evitar sumar el ID "total-general"
+    document.querySelectorAll('.subtotal-fila').forEach(el => {
         suma += parseFloat(el.textContent.replace('$', '')) || 0;
     });
     document.getElementById('total-general').textContent = '$' + suma.toFixed(2);
 }
 
-agregarFila(); // Iniciar con una fila
+// Iniciar con una fila vacía
+document.addEventListener('DOMContentLoaded', () => {
+    agregarFila();
+});
 </script>
